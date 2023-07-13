@@ -2,6 +2,8 @@
 	#error C++ 11 or higher must be used to compile ConsoleGraphics.
 #endif
 
+//Version 1.0-Beta-1
+
 #include <vector>
 #include <windows.h>
 #include <math.h>
@@ -27,40 +29,6 @@
 	#define uint64 uint64_t
 #endif
 
-//CGV1
-//Focus on performance
-//Fix RGB reversal issue
-//Make improvements
-//Fix endianness issue
-
-/*+===============================================================>
-+ Add support for animated images (AniImage) FINISHED
-+ Add matrix transformations to image class (shear, rotation, etc) ONLY IN CG-V2
-. Make most integers signed CG-V2
-. Optimize code PARTIALLY DONE
-. Make pseudo-transparency function work propely CG-V2
-. Make code look cleaner 
-. Fix text class NANI??!!!
-+ Add SIMD/MIMD to increase performance
-*/
-
-//File extentions
-//".CGIF" - Console Graphics Image Format (supports run length encoding)
-//".CGFNT" - Console Graphics Font (Stores the font's width and height within the file, doesn't support run length encoding)
-//".CGAI" - Console Graphics Animated Image (supports run length encoding)
-//".CGVID" - Console Graphics Video (will reduce colour space to 2 bits per colour and have RLE to reduce video size, option to sync video to audio)
-//".CGVF" - ^^^
-
-//File formats
-//First for bytes = "CG**", * will change depending on file type
-//All integers will be saved as big endian <-
-
-//CGIF
-//
-
-//When using this console graphics API, to use colour use the windows.h RGB macro
-//Maybe get colour struct to work and eventually change all unsigned position ints to signed
-
 #ifndef CG_INCLUDE
 #define CG_INCLUDE
 
@@ -76,32 +44,6 @@
 #define SET_PIXEL_HORIZONTAL_INVERT ~SET_PIXEL_HORIZONTAL
 
 class ConsoleGraphics;
-
-/*
-union
-{
-	__m128 v;
-	uint16 i[8];
-} C;
-
-
-uint32 blendPixelSIMD(uint32 *dstRGB, uint32 *srcRGB, uint8 srcA, uint8 size = 8)
-{
-	static uint16 r, g, b;
-	C v;
-	v.i[0] = GetBValue(dstRGB);
-	v.i[1] = GetGValue(dstRGB);
-	v.i[2] = GetRValue(dstRGB);
-	
-	//Get*Value calls are flipped because the rgb values are.
-	r = (GetBValue(dstRGB)*(255-srcA))+(GetBValue(srcRGB)*srcA);
-	g = (GetGValue(dstRGB)*(255-srcA))+(GetGValue(srcRGB)*srcA);
-	b = (GetRValue(dstRGB)*(255-srcA))+(GetRValue(srcRGB)*srcA);
-	r /= 255, g /= 255, b /= 255;
-	
-	return RGB((uint8)b, (uint8)g, (uint8)r);
-}
-*/
 
 #undef RGB
 
