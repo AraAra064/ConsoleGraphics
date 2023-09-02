@@ -2,7 +2,7 @@
 	#error C++ 11 or higher must be used to compile ConsoleGraphics.
 #endif
 
-//Version 1.0-Beta-1
+//Version 1.0-Beta-2
 
 #include <vector>
 #include <windows.h>
@@ -45,7 +45,7 @@
 
 class ConsoleGraphics;
 
-#undef RGB
+//#undef RGB
 
 namespace cg
 {
@@ -88,8 +88,10 @@ uint32 blendPixel(uint32 dstRGB, uint32 srcRGB, uint8 srcA)
 	return cg::BGR((uint8)r, (uint8)g, (uint8)b);
 }
 
-struct BMPHeader
+class BMPHeader
 {
+	uint8* headerData;
+
 	uint8 fileType[2];
 	uint32 fileSize;
 	int16 unused[2];
@@ -104,58 +106,70 @@ struct BMPHeader
 	uint32 prRes[2];
 	uint32 pColours;
 	uint32 iColours;
-	
-	BMPHeader()
-	{
-		fileType[0] = 'B';
-		fileType[1] = 'M';
-		fileSize = 54;
-		memset(&unused[0], 0, sizeof(int16)*2);
-		dataOffset = 54;
-		dibHeaderSize = 40;
-		colourPlanes = 1;
-		bitsPerPixel = 24;
-		compression = 0;
-		memset(&prRes[0], 2835, sizeof(uint32)*2);
-		pColours = 0;
-		iColours = 0;
-	}
-	
-	uint8 *getHeaderData(void)
-	{
-		uint8 *data = new uint8[54];
-		uint32 i = 0;
-		memcpy(&data[0], &fileType[0], sizeof(fileType));
-		i += sizeof(fileType);
-		memcpy(&data[i], &fileSize, sizeof(fileSize));
-		i += sizeof(fileSize);
-		memcpy(&data[i], &unused[0], sizeof(unused));
-		i += sizeof(unused);
-		memcpy(&data[i], &dataOffset, sizeof(dataOffset));
-		i += sizeof(dataOffset);
-		memcpy(&data[i], &dibHeaderSize, sizeof(dibHeaderSize));
-		i += sizeof(dibHeaderSize);
-		memcpy(&data[i], &width, sizeof(width));
-		i += sizeof(width);
-		memcpy(&data[i], &height, sizeof(height));
-		i += sizeof(height);
-		memcpy(&data[i], &colourPlanes, sizeof(colourPlanes));
-		i += sizeof(colourPlanes);
-		memcpy(&data[i], &bitsPerPixel, sizeof(bitsPerPixel));
-		i += sizeof(bitsPerPixel);
-		memcpy(&data[i], &compression, sizeof(compression));
-		i += sizeof(compression);
-		memcpy(&data[i], &prRes[0], sizeof(prRes));
-		i += sizeof(prRes);
-		memcpy(&data[i], &pColours, sizeof(pColours));
-		i += sizeof(pColours);
-		memcpy(&data[i], &iColours, sizeof(iColours));
+
+	public:
 		
-		return data;
-	}
-	
-	uint32 calcPaddingSize(uint32 width = 0){return (4-((width == 0 ? this->width : width)*3)%4)%4;
-	}
+		BMPHeader()
+		{
+			fileType[0] = 'B';
+			fileType[1] = 'M';
+			fileSize = 54;
+			memset(&unused[0], 0, sizeof(int16)*2);
+			dataOffset = 54;
+			dibHeaderSize = 40;
+			colourPlanes = 1;
+			bitsPerPixel = 24;
+			compression = 0;
+			memset(&prRes[0], 2835, sizeof(uint32)*2);
+			pColours = 0;
+			iColours = 0;
+		}
+
+		void setHeaderPtr(uint8* ptr)
+		{
+			headerData = ptr;
+			return;
+		}
+		
+		uint8 *getHeaderData(void)
+		{
+			uint8 *data = new uint8[54];
+			uint32 i = 0;
+			memcpy(&data[0], &fileType[0], sizeof(fileType));
+			i += sizeof(fileType);
+			memcpy(&data[i], &fileSize, sizeof(fileSize));
+			i += sizeof(fileSize);
+			memcpy(&data[i], &unused[0], sizeof(unused));
+			i += sizeof(unused);
+			memcpy(&data[i], &dataOffset, sizeof(dataOffset));
+			i += sizeof(dataOffset);
+			memcpy(&data[i], &dibHeaderSize, sizeof(dibHeaderSize));
+			i += sizeof(dibHeaderSize);
+			memcpy(&data[i], &width, sizeof(width));
+			i += sizeof(width);
+			memcpy(&data[i], &height, sizeof(height));
+			i += sizeof(height);
+			memcpy(&data[i], &colourPlanes, sizeof(colourPlanes));
+			i += sizeof(colourPlanes);
+			memcpy(&data[i], &bitsPerPixel, sizeof(bitsPerPixel));
+			i += sizeof(bitsPerPixel);
+			memcpy(&data[i], &compression, sizeof(compression));
+			i += sizeof(compression);
+			memcpy(&data[i], &prRes[0], sizeof(prRes));
+			i += sizeof(prRes);
+			memcpy(&data[i], &pColours, sizeof(pColours));
+			i += sizeof(pColours);
+			memcpy(&data[i], &iColours, sizeof(iColours));
+			
+			return data;
+		}
+
+		uint16 getFileType(void){return (uint16*)&headerData[0x00];
+		}
+		uint32 getFile
+
+		uint32 calcPaddingSize(uint32 width = 0){return (4-((width == 0 ? this->width : width)*3)%4)%4;
+		}
 };
 
 class _BMPHandler
@@ -228,7 +242,6 @@ class Image
 	std::vector<std::pair<uint32, uint8>> pixels;
 	uint32 width, height, x = 0, y = 0;
 	float aspectRatio;
-	bool bigEndian = (htonl(123) == 123);
 	
 	protected:
 		std::vector<std::pair<uint32, uint8>> resizeData(std::vector<std::pair<uint32, uint8>> &pixels, uint32 newWidth, uint32 newHeight, InterpolationMethod m)
@@ -345,20 +358,16 @@ class Image
 		}
 		
 		//This doesn't work properly (header I think??)
-		void saveBMPFile(std::string fileName, uint32 ver)
+		/*void saveBMPFile(std::string fileName, uint32 ver)
 		{
 			std::ofstream writeFile(fileName, std::ios::binary);
 			BMPHeader header;
 			uint8 p = 0;
-			header.width = bigEndian ? _byteswap_ulong(width) : width;
-			header.height = bigEndian ? _byteswap_ulong(-height) : -height;
+			header.width = width;
+			header.height = -height;
 			header.fileSize += 3*(width+header.calcPaddingSize())*height;
 			header.dataSize = header.fileSize-54;
-			if (bigEndian)
-			{
-				header.fileSize = _byteswap_ulong(header.fileSize);
-				header.dataSize = _byteswap_ulong(header.dataSize);
-			}
+
 			uint8 *headerInfo = header.getHeaderData();
 			writeFile.write((char*)headerInfo, 54);
 			delete[] headerInfo;
@@ -378,7 +387,7 @@ class Image
 			}
 			writeFile.close();
 			return;
-		}
+		}*/
 		
 	public:
 		Image()
@@ -443,7 +452,7 @@ class Image
 				y = image.getPosY();
 				
 				pixels.resize(width * height);
-				memcpy(&pixels[0], image.getPixelData(), width*height*sizeof(std::pair<uint32, uint8>));
+				memcpy(&pixels[0], image.getPixelData(), width * height * sizeof(std::pair<uint32, uint8>));
 			}
 			return *this;
 		}
@@ -467,143 +476,64 @@ class Image
 				std::ifstream readfile(fileName, std::ios::binary);
 				if (!readfile.is_open()){return 1;
 				}
-				BMPHeader header;
-				unsigned char *data;
-				readfile.read((char*)&header.fileType[0], sizeof(uint8)*2);
-				readfile.read((char*)&header.fileSize, sizeof(uint32));
-				readfile.read((char*)&header.unused[0], sizeof(int16)*2);
-				readfile.read((char*)&header.dataOffset, sizeof(uint32));
-				readfile.read((char*)&header.dibHeaderSize, sizeof(uint32));
-				readfile.read((char*)&header.width, sizeof(int32));
-				readfile.read((char*)&header.height, sizeof(int32));
-				readfile.read((char*)&header.colourPlanes, sizeof(int16));
-				readfile.read((char*)&header.bitsPerPixel, sizeof(int16));
-				readfile.read((char*)&header.compression, sizeof(uint32));
-				readfile.read((char*)&header.dataSize, sizeof(uint32));
-				readfile.read((char*)&header.prRes[0], sizeof(uint32)*2);
-				readfile.read((char*)&header.pColours, sizeof(uint32));
-				readfile.read((char*)&header.iColours, sizeof(uint32));
-				
-				if (bigEndian)
-				{
-					std::swap(header.fileType[0], header.fileType[1]);
-					header.fileSize = _byteswap_ulong(header.fileSize);
-					header.unused[0] = _byteswap_ushort(header.unused[0]);
-					header.unused[1] = _byteswap_ushort(header.unused[1]);
-					header.dataOffset = _byteswap_ulong(header.dataOffset);
-					header.dibHeaderSize = _byteswap_ulong(header.dibHeaderSize);
-					header.width = _byteswap_ulong(header.width);
-					header.height = _byteswap_ulong(header.height);
-					header.colourPlanes = _byteswap_ushort(header.colourPlanes);
-					header.bitsPerPixel = _byteswap_ushort(header.bitsPerPixel);
-					header.dataSize = _byteswap_ulong(header.dataSize);
-					header.prRes[0] = _byteswap_ulong(header.prRes[0]);
-					header.prRes[1] = _byteswap_ulong(header.prRes[1]);
-					header.pColours = _byteswap_ulong(header.pColours);
-					header.iColours = _byteswap_ulong(header.iColours);
-				}
-				
+				//BMPHeader header;
+				unsigned char header[54];
+				readfile.read((char*)header, 54 * sizeof(uint8));
+				uint32 dataOffset = *(uint32*)&header[0x0E];
+				int32 width = *(int32*)&header[0x12];
+				int32 height = *(int32*)&header[0x16];
+
+				uint16 bytesPerPixel = 3; //*(uint16*)&header[0x1C] / 8 //bites to bytes;
+
 				//Magic number != "BM"
-				if (header.fileType[0] != 'B' || header.fileType[1] != 'M')
+				if (header[0] != 'B' || header[1] != 'M')
 				{
 					#ifdef CG_DEBUG
-						std::cerr<<"Invalid BMP Magic Number"<<std::endl; 
+						std::cerr << "Error loading BMP (" << fileName << "): Invalid BMP Magic Number" << std::endl;
 					#endif
 					return 1;
 				}
 				
-				const unsigned int w = header.width*3;
-				this->width = header.width;
-				this->height = abs(header.height);
+				this->width = width;
+				this->height = abs(height);
 				aspectRatio = (float)this->width/(float)this->height;
-				data = new unsigned char[w];
-				unsigned long int x = 0, y = 0;
 				pixels.resize(this->width * this->height);
-				readfile.read(reinterpret_cast<char*>(data), header.dataOffset - 54);
-				while (y<this->height)
+
+				const uint32 rowSize = width * bytesPerPixel;
+				rowData = new unsigned char[rowSize];
+				if (rowData == nullptr)
 				{
-					readfile.read(reinterpret_cast<char*>(data), w);
-					while (x<w)
+					#ifdef CG_DEBUG
+						std::cerr << "Error loading BMP (" << fileName << "): Failed to allocate \"rowData\"." << std::endl;
+					#endif
+					return 1;
+				}
+
+				//Skip to image data
+				readfile.read(reinterpret_cast<char*>(rowData), dataOffset - 54);
+
+				for (uint32 y = 0; y < height; ++y)
+				{
+					readfile.read(reinterpret_cast<char*>(rowData), rowSize);
+					for (uint32 x = 0; x < rowSize; ++x)
 					{
-						pixels[(y*this->width)+(x/3)] = std::make_pair(cg::BGR(data[x+2], data[x+1], data[x]), 255);
+						pixels[(y*this->width)+(x/3)] = std::make_pair(cg::BGR(rowData[x+2], rowData[x+1], rowData[x]), 255);
 						x += 3;
 					}
-					readfile.read(reinterpret_cast<char*>(data), header.calcPaddingSize());
-					x = 0;
-					++y;
+					readfile.read(reinterpret_cast<char*>(rowData), header.calcPaddingSize());
 				}
-				delete[] data;
-				y = 0;
+
+				delete[] rowData;
 				readfile.close();
-				if (header.height > 0){flipVertically();
+				if (height > 0){flipVertically();
 				}
-				return 1;
-			} else if (_fileName.find(".CGIF") != std::string::npos) //CGIF = Console Graphics Image Format, <- make all integers big endian
-			{
-				std::ifstream readfile(fileName, std::ios::binary);
-				if (!readfile.is_open()){return 1;
-				}
-				uint32 width, height, version, size;
-				
-				readfile.read((char*)&width, sizeof(uint32));
-//				width = ntohl(width);
-				this->width = width;
-				readfile.read((char*)&height, sizeof(uint32));
-//				height = ntohl(height);
-				this->height = height;
-				readfile.read((char*)&version, sizeof(uint32));
-				aspectRatio = (float)width/(float)height;
-				size = width*height;
-				
-				pixels.resize(width*height);
-				
-				if (version == 1)
-				{
-					for (uint32 i = 0; i < size; ++i)
-					{
-						readfile.read((char*)&pixels[i].first, sizeof(uint32));
-//						pixels[i].first = ntohl(pixels[i].first);
-						readfile.read((char*)&pixels[i].second, sizeof(uint8));
-						for (uint8 i = 0; i < 3; ++i)
-						{
-							uint8 c;
-							readfile.read((char*)&c, sizeof(uint8));
-						}
-					}
-				} else if (version == 2)
-				{
-					uint32 i = 0;
-					uint8 count;
-					std::pair<uint32, uint8> pixel;
-					
-					while (i < (width * height))
-					{
-						readfile.read(reinterpret_cast<char*>(&count), sizeof(uint8));
-						readfile.read(reinterpret_cast<char*>(&pixel.first), sizeof(uint32));
-//						pixel.first = ntohl(pixel.first);
-						readfile.read(reinterpret_cast<char*>(&pixel.second), sizeof(uint8));
-						for (uint8 i = 0; i < 3; ++i)
-						{
-							uint8 c;
-							readfile.read((char*)&c, sizeof(uint8));
-						}
-						
-						while(count != 0)
-						{
-							pixels[i] = pixel;
-							++i;
-							--count;
-						}
-					}
-				} else return 1;
-				readfile.close();
 			} else if (_fileName.find(".GIF") != std::string::npos)
 			{
 				#ifdef CG_DEBUG
 					std::cerr<<"GIF loading function has not been implemented yet."<<std::endl;
 				#endif
-				return 0;
-			} else return 0;
+				return 1;
+			};
 			return 0;
 		}
 		void loadImageFromArray(const uint32 *arr, uint32 width, uint32 height, bool alpha = false)
@@ -644,7 +574,8 @@ class Image
 			return;
 		}
 		
-		void saveImage(const std::string fileName, uint32 ver)
+		//Will reimplement later
+		/*void saveImage(const std::string fileName, uint32 ver)
 		{
 			std::string _fileName = fileName;
 			std::transform(_fileName.begin(), _fileName.end(), _fileName.begin(), [](char c)->char{return toupper(c);});
@@ -652,40 +583,9 @@ class Image
 			if (_fileName.find(".BMP") != std::string::npos)
 			{
 				saveBMPFile(fileName, ver);
-			} else if (_fileName.find(".CGIF") != std::string::npos)
-			{
-				std::ofstream writeFile(fileName, std::ios::binary);
-				if (ver == 1)
-				{
-					writeFile.write(reinterpret_cast<const char*>(&width), sizeof(uint32));
-					writeFile.write(reinterpret_cast<const char*>(&height), sizeof(uint32));
-					writeFile.write(reinterpret_cast<const char*>(&ver), sizeof(uint32));
-					
-					writeFile.write(reinterpret_cast<const char*>(pixels.data()), pixels.size()*sizeof(std::pair<uint32, uint8>));
-				} else if (ver == 2)
-				{
-					writeFile.write(reinterpret_cast<const char*>(&width), sizeof(uint32));
-					writeFile.write(reinterpret_cast<const char*>(&height), sizeof(uint32));
-					writeFile.write(reinterpret_cast<const char*>(&ver), sizeof(uint32));
-					
-					uint8 count;
-					
-					for (uint32 i = 0; i<pixels.size(); ++i)
-					{
-						count = 1;
-						while (i<pixels.size() && pixels[i].first == pixels[i+1].first && pixels[i].second == pixels[i+1].second && count < 255)
-						{
-							++count;
-							++i;
-						}
-						writeFile.write(reinterpret_cast<const char*>(&count), sizeof(uint8));
-						writeFile.write(reinterpret_cast<const char*>(&pixels[i]), sizeof(std::pair<uint32, uint8>));
-					}
-				}
-				writeFile.close();
 			}
 			return;
-		}
+		}*/
 		
 		//0 = Grayscale
 		//1 = Standard grayscale
@@ -829,11 +729,11 @@ class Image
 			}
 			return;
 		}
-		void scale(float x, float y, InterpolationMethod m = InterpolationMethod::NearestNeighbor)
+		void scale(float sx, float sy, InterpolationMethod m = InterpolationMethod::NearestNeighbor)
 		{
-			if (x > 0.f && y > 0.f)
+			if (sx > 0.f && sy > 0.f)
 			{
-				resize(width * x, height * y, m);
+				resize(width * sx, height * sy, m);
 			}
 			return;
 		}
@@ -844,71 +744,17 @@ class Image
 //			if (x < width && y < height){return pixels[(y * width)+x];
 //			} else return pixels[0];
 //		}
+		std::pair<uint32, uint8>* accessPixel(uint32 x, uint32 y) {
+			return &pixels[(y * width) + x];
+		}
+
+		//If pixel at co-ordinate doesn't exist, will return "nullptr"
 		std::pair<uint32, uint8> *getPixel(uint32 x, uint32 y)
 		{
 			if (x < width && y < height){return &pixels[(y * width)+x];
 			} else return nullptr;
 		}
-		std::pair<uint32, uint8> *accessPixel(uint32 x, uint32 y){return &pixels[(y * width)+x];
-		}
-		
-//		std::pair<uint32, uint8> getPixelWInterpolation(float x, float y, InterpolationMethod im = InterpolationMethod::NearestNeighbor, ExtrapolationMethod em = ExtrapolationMethod::Repeat) const
-//		{
-//			std::pair<uint32, uint8> pixel(0, 0);
-//			
-//			bool n = false, xNeg = (x < 0.f), yNeg = (y < 0.f);
-//			uint32 ix = width-1, iy = height-1;
-//			if (x > 1.f || xNeg)
-//			{
-//				switch (em)
-//				{
-//					default:
-//					case ExtrapolationMethod::None:
-//						n = true;
-//						break;
-//					
-//					case ExtrapolationMethod::Repeat:
-//						x = fabs(x) - floor(fabs(x));
-//						x = xNeg ? 1.f-x :x;
-//						ix = floor(x * (width-1));
-//						break;
-//					
-//					case ExtrapolationMethod::Extend:
-//						x = std::max(std::min(1.f, x), 0.f);
-//						ix = floor(x * (width-1));
-//						break;
-//				}
-//			} else ix = floor(x * (width-1));
-//			if (y > 1.f || yNeg)
-//			{
-//				switch (em)
-//				{
-//					default:
-//					case ExtrapolationMethod::None:
-//						n = true;
-//						break;
-//					
-//					case ExtrapolationMethod::Repeat:
-//						y = fabs(y) - floor(fabs(y));
-//						y = yNeg ? 1.f-y : y;
-//						iy = floor(y * (height-1));
-//						break;
-//					
-//					case ExtrapolationMethod::Extend:
-//						y = std::max(std::min(1.f, y), 0.f);
-//						iy = floor(y * (height-1));
-//						break;
-//				}
-//			} else iy = floor(y * (height-1));
-//			
-//			if (!n) //Inbounds
-//			{
-//				
-//			}
-//			
-//			return pixel;
-//		}
-		
+
 		std::pair<uint32, uint8> getPixel(float x, float y, InterpolationMethod im = InterpolationMethod::NearestNeighbor, ExtrapolationMethod em = ExtrapolationMethod::Repeat) const
 		{
 			bool n = false, xNeg = (x < 0.f), yNeg = (y < 0.f);
@@ -1257,6 +1103,7 @@ class Image
 			return;
 		}
 		
+		//Needs to be rewritten
 		void getHWNDBitmap(HWND handle)
 		{
 			HDC hdc = GetDC(handle);
