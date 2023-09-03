@@ -1,14 +1,6 @@
 //ConsoleGraphics Version 1.0-Beta-3
 //ISO C++ 11 or higher must be used to compile ConsoleGraphics.
 
-//TODO
-//-Add proper error return values
-//-Make "debug logging" output more consistant
-//-Add everything to the "cg" namespace
-//Fix bilinear interpolation bug
-//-Add short descriptions before functions
-//Replace all Get*Value() functions with the cg::Get*() equivilant
-
 #include <vector>
 #include <limits>
 #include <cmath>
