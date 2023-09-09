@@ -1,4 +1,4 @@
-//ConsoleGraphics Version 1.0-Beta-4
+//ConsoleGraphics Version 1.0
 //ISO C++ 11 or higher must be used to compile ConsoleGraphics.
 
 #include <vector>
@@ -8,9 +8,6 @@
 #include <fstream>
 #include <algorithm>
 #include <utility>
-#include <deque>
-#include <mutex>
-//#include <memory>
 
 #define NOMINMAX
 #include <windows.h>
@@ -33,6 +30,7 @@
 #ifndef CG_INCLUDE
 #define CG_INCLUDE
 
+//cg::BGR() is the same as RGB() from windows.h
 #undef RGB
 
 namespace cg
@@ -90,7 +88,7 @@ namespace cg
 		float aspectRatio;
 
 	protected:
-		std::vector<std::pair<uint32, uint8>> resizeData(std::vector<std::pair<uint32, uint8>>& pixels, uint32 newWidth, uint32 newHeight, InterpolationMethod m)
+		std::vector<std::pair<uint32, uint8>> ResizeData(std::vector<std::pair<uint32, uint8>>& pixels, uint32 newWidth, uint32 newHeight, InterpolationMethod m)
 		{
 			std::vector<std::pair<uint32, uint8>> data;
 			bool success = true;
@@ -160,16 +158,15 @@ namespace cg
 										if (getPixel(srcX + w - _w, srcY + h - _h) != nullptr)
 										{
 											alphaRatio = pixels[((srcY + h - _h) * width) + (srcX + w - _w)].second / 255.f;
-											avR += GetBValue(pixels[((srcY + h - _h) * width) + (srcX + w - _w)].first) * alphaRatio;
-											avG += GetGValue(pixels[((srcY + h - _h) * width) + (srcX + w - _w)].first) * alphaRatio;
-											avB += GetRValue(pixels[((srcY + h - _h) * width) + (srcX + w - _w)].first) * alphaRatio;
+											avR += cg::GetR(pixels[((srcY + h - _h) * width) + (srcX + w - _w)].first) * alphaRatio;
+											avG += cg::GetG(pixels[((srcY + h - _h) * width) + (srcX + w - _w)].first) * alphaRatio;
+											avB += cg::GetB(pixels[((srcY + h - _h) * width) + (srcX + w - _w)].first) * alphaRatio;
 											avA += pixels[((srcY + h - _h) * width) + (srcX + w - _w)].second;
-										}
-										else {
+										} else {
 											alphaRatio = pixels[(srcY * width) + srcX].second / 255.f;
-											avR += GetBValue(pixels[(srcY * width) + srcX].first) * alphaRatio;
-											avG += GetGValue(pixels[(srcY * width) + srcX].first) * alphaRatio;
-											avB += GetRValue(pixels[(srcY * width) + srcX].first) * alphaRatio;
+											avR += cg::GetR(pixels[(srcY * width) + srcX].first) * alphaRatio;
+											avG += cg::GetG(pixels[(srcY * width) + srcX].first) * alphaRatio;
+											avB += cg::GetB(pixels[(srcY * width) + srcX].first) * alphaRatio;
 											avA += pixels[(srcY * width) + srcX].second;
 										}
 									}
@@ -179,7 +176,6 @@ namespace cg
 								data[(y * newWidth) + x] = std::make_pair(RGB(avB, avG, avR), avA);
 							}
 						}
-						
 					} else data = this->pixels;
 				}
 				break;
@@ -188,28 +184,26 @@ namespace cg
 			{
 				width = newWidth;
 				height = newHeight;
-			}
-			else {
+			} else {
 				#ifdef CG_DEBUG
-					std::cerr << "CGIMG ERROR {this->resizeData()}: New image size greater than original [" << width << char(158) << height << " -> " << newWidth << char(158) << newHeight << ", InterpolationMethod::AreaAveraging]" << std::endl;
+					std::cerr << "CGIMG ERROR {this->ResizeData()}: New image size greater than original [" << width << char(158) << height << " -> " << newWidth << char(158) << newHeight << ", InterpolationMethod::AreaAveraging]" << std::endl;
 				#endif
 			}
 			return data;
 		}
 
-		void getHWNDSize(const HWND& hwnd, uint32& width, uint32& height)
+		void GetWindowSize(HWND w, uint32& width, uint32& height)
 		{
-			RECT desktop;
-			GetWindowRect(hwnd, &desktop);
-			width = desktop.right - desktop.left, height = desktop.bottom - desktop.top;
+			RECT window;
+			GetWindowRect(w, &window);
+
+			width = window.right - window.left;
+			height = window.bottom - window.top;
 			return;
 		}
 
-		uint32 calcBMPPaddingSize(uint32 width){return (4 - (width * 3) % 4) % 4;
-		}
-
 	public:
-		//Default
+		//Default constructor
 		Image()
 		{
 			width = 256;
@@ -525,23 +519,23 @@ namespace cg
 		}
 
 		//If either newWidth or newHeight == 0, the image's aspect ratio is maintained
-		//Resizes image to specified dimensions using chosen interpolation method
+		//Resamples image to specified dimensions using chosen interpolation method
 		void resize(uint32 newWidth, uint32 newHeight, InterpolationMethod m = InterpolationMethod::NearestNeighbor)
 		{
 			if (newWidth == 0)
 			{
-				pixels = resizeData(pixels, newHeight * aspectRatio, newHeight, m);
+				pixels = ResizeData(pixels, newHeight * aspectRatio, newHeight, m);
 				width = newHeight * aspectRatio;
 				height = newHeight;
 			}
 			else if (newHeight == 0)
 			{
-				pixels = resizeData(pixels, newWidth, newWidth / aspectRatio, m);
+				pixels = ResizeData(pixels, newWidth, newWidth / aspectRatio, m);
 				width = newWidth;
 				height = newWidth / aspectRatio;
 			}
 			else {
-				pixels = resizeData(pixels, newWidth, newHeight, m);
+				pixels = ResizeData(pixels, newWidth, newHeight, m);
 				width = newWidth;
 				height = newHeight;
 				aspectRatio = (float)width / (float)height;
@@ -549,7 +543,7 @@ namespace cg
 			return;
 		}
 
-		//Resizes image by a scale factor using a chosen interpolation method, aspect ratio is maintained
+		//Resamples image by a scale factor using a chosen interpolation method, aspect ratio is maintained
 		void scale(float s, InterpolationMethod m = InterpolationMethod::NearestNeighbor)
 		{
 			if (s > 0.f)
@@ -559,7 +553,7 @@ namespace cg
 			return;
 		}
 
-		//Resizes image by a scale factor in each axis using a chosen interpolation method, aspect can be changed
+		//Resamples image by a scale factor in each axis using a chosen interpolation method, aspect may be changed
 		void scale(float sx, float sy, InterpolationMethod m = InterpolationMethod::NearestNeighbor)
 		{
 			if (sx > 0.f && sy > 0.f)
@@ -568,13 +562,6 @@ namespace cg
 			}
 			return;
 		}
-
-		//		//Returns the first element of the array because references don't have a "nullptr" equivilant
-		//		std::pair<unsigned long int, unsigned char> &getPixel(unsigned long int x, unsigned long int y)
-		//		{
-		//			if (x < width && y < height){return pixels[(y * width)+x];
-		//			} else return pixels[0];
-		//		}
 
 		//Returns a pointer to a pixel without checking if it exists 
 		std::pair<uint32, uint8>* accessPixel(uint32 x, uint32 y){return &pixels[(y * width) + x];
@@ -882,7 +869,7 @@ namespace cg
 			return;
 		}
 
-		//Change the image's dimensions (does not resize colour data)
+		//Change the image's dimensions (does not resample image)
 		void setSize(uint32 newWidth, uint32 newHeight, bool clearData = false)
 		{
 			auto temp = pixels;
@@ -913,7 +900,6 @@ namespace cg
 				{
 					if (getPixel(ix + dstX, iy + dstY) != nullptr && image.getPixel(ix + srcX, iy + srcY) != nullptr)
 					{
-						//*getPixel(ix+dstX, iy+dstY) = std::make_pair(image.getPixel(ix+srcX, iy+srcY)->first, alpha ? image.getPixel(ix+srcX, iy+srcY)->second : 255);
 						pixels[((iy + dstY) * this->width) + (ix + dstX)] = std::make_pair(image.getPixelData()[((iy + srcY) * image.getWidth()) + (ix + srcX)].first, alpha ? image.getPixelData()[((iy + srcY) * image.getWidth()) + (ix + srcX)].second : 255);
 					}
 				}
@@ -1118,7 +1104,7 @@ namespace cg
 		HBITMAP pixelBitmap;
 		HDC targetDC, tempDC;
 		bool alphaMode;
-		uint8 pixelSize;
+		uint16 pixelSize;
 		bool enableShaders;
 		std::vector<void(*)(uint32*, uint32, uint32, uint32, uint32, void*)> shaderList;
 		std::vector<void*> shaderDataList;
@@ -1149,46 +1135,32 @@ namespace cg
 		}
 
 		//Improve this
-		void removeScrollbars(void)
+		void RemoveScrollbar(void)
 		{
-			HANDLE hstdout = GetStdHandle(STD_OUTPUT_HANDLE);
-			CONSOLE_SCREEN_BUFFER_INFO csbi;
-			GetConsoleScreenBufferInfo(hstdout, &csbi);
-
-			csbi.dwSize.X -= 2;//= csbi.dwMaximumWindowSize.X;
-			csbi.dwSize.Y = csbi.dwMaximumWindowSize.Y;
-			SetConsoleScreenBufferSize(hstdout, csbi.dwSize);
-
-			HWND x = GetConsoleWindow();
-			ShowScrollBar(x, SB_BOTH, FALSE);
+			ShowScrollBar(GetConsoleWindow(), SB_BOTH, FALSE);
 			return;
 		}
 
-		void getHWNDRes(const HWND& hwnd, uint32& width, uint32& height)
+		void GetWindowSize(HWND w, uint32& width, uint32& height)
 		{
-			static RECT desktop;
-			GetWindowRect(hwnd, &desktop);
-			width = desktop.right - desktop.left, height = desktop.bottom - desktop.top;
-			return;
-		}
-
-		void getConsoleRes(void)
-		{
-			getHWNDRes(GetConsoleWindow(), consoleWidth, consoleHeight);
-			return;
-		}
-
-		void setConsoleRes(const uint32 width, const uint32 height)
-		{
-			HWND console = GetConsoleWindow();
 			RECT window;
-			GetWindowRect(console, &window);
-			MoveWindow(console, window.left, window.top, width, height, true);
-			removeScrollbars();
+			GetWindowRect(w, &window);
+
+			width = window.right - window.left;
+			height = window.bottom - window.top;
 			return;
 		}
 
-		std::vector<uint32> resizeDataNearestNeighbor(std::vector<uint32>& pixels, uint32 newWidth, uint32 newHeight)
+		void SetConsoleSize(uint32 width, uint32 height)
+		{
+			RECT window;
+			GetWindowRect(GetConsoleWindow(), &window);
+			SetWindowPos(GetConsoleWindow(), HWND_TOP, window.left, window.top, width, height, SWP_SHOWWINDOW);
+			RemoveScrollbar();
+			return;
+		}
+
+		std::vector<uint32> ResizeDataNearestNeighbor(std::vector<uint32>& pixels, uint32 newWidth, uint32 newHeight)
 		{
 			std::vector<uint32> data;
 			float xScale = (float)width / (float)newWidth, yScale = (float)height / (float)newHeight;
@@ -1219,18 +1191,18 @@ namespace cg
 		ConsoleGraphics()
 		{
 			initialise();
-			getConsoleRes();
-			removeScrollbars();
+			GetWindowSize(GetConsoleWindow(), consoleWidth, consoleHeight);
+			RemoveScrollbar();
 			width = consoleWidth;
 			height = consoleHeight;
 			pixels.resize(width * height);
 		}
 
-		ConsoleGraphics(uint32 width, uint32 height, bool setSize = false, uint8 pixelSize = 1, bool pixelMode = false)
+		ConsoleGraphics(uint32 width, uint32 height, bool setSize = false, uint16 pixelSize = 1, bool pixelMode = false)
 		{
 			initialise();
-			this->pixelSize = std::max<uint8>(pixelSize, 1);
-			getConsoleRes();
+			this->pixelSize = std::max<uint16>(pixelSize, 1);
+			GetWindowSize(GetConsoleWindow(), consoleWidth, consoleHeight);
 			this->width = width / (!pixelMode ? 1 : pixelSize);
 			this->height = height / (!pixelMode ? 1 : pixelSize);
 
@@ -1238,7 +1210,7 @@ namespace cg
 			{
 				//Get windows version and add offset to window size
 				uint16 windowWidthOffset = 0, windowHeightOffset = 0;
-				setConsoleRes(consoleWidth + windowWidthOffset, consoleHeight + windowHeightOffset);
+				SetConsoleSize(consoleWidth + windowWidthOffset, consoleHeight + windowHeightOffset);
 			}
 
 			pixels.resize(this->width * this->height);
@@ -1295,8 +1267,8 @@ namespace cg
 					{
 						for (uint32 x = 0; x < consoleWidth; ++x)
 						{
-							uint32& p = pixels[((y / pixelSize) * width) + (x / pixelSize)];
-							SetPixelV(targetDC, x, y, renderMode == RenderMode::SetPixel ? RGB(GetBValue(p), GetGValue(p), GetRValue(p)) : RGB(GetBValue(p), GetGValue(p), GetRValue(p)) ^ 0x00ffffff); //^ 0x00ffffff << inverts colours
+							uint32 p = _byteswap_ulong(pixels[((y / pixelSize) * width) + (x / pixelSize)]) >> 8;
+							SetPixelV(targetDC, x, y, renderMode == RenderMode::SetPixel ? p : p ^ 0x00FFFFFF); //^ 0x00FFFFFF << inverts colours
 						}
 					}
 					break;
@@ -1307,8 +1279,8 @@ namespace cg
 					{
 						for (uint32 y = 0; y < consoleHeight; ++y)
 						{
-							uint32& p = pixels[((y / pixelSize) * width) + (x / pixelSize)];
-							SetPixelV(targetDC, x, y, renderMode == RenderMode::SetPixelVer ? RGB(GetBValue(p), GetGValue(p), GetRValue(p)) : RGB(GetBValue(p), GetGValue(p), GetRValue(p)) ^ 0x00ffffff);
+							uint32 p = _byteswap_ulong(pixels[((y / pixelSize) * width) + (x / pixelSize)]) >> 8;
+							SetPixelV(targetDC, x, y, renderMode == RenderMode::SetPixelVer ? p : p ^ 0x00FFFFFF);
 						}
 					}
 					break;
@@ -1382,8 +1354,8 @@ namespace cg
 		{
 			if (!(ratio <= 1.f) && ratio < width && ratio < height)
 			{
-				pixels = resizeDataNearestNeighbor(pixels, width / ratio, height / ratio);
-				pixels = resizeDataNearestNeighbor(pixels, consoleWidth / pixelSize, consoleHeight / pixelSize);
+				pixels = ResizeDataNearestNeighbor(pixels, width / ratio, height / ratio);
+				pixels = ResizeDataNearestNeighbor(pixels, consoleWidth / pixelSize, consoleHeight / pixelSize);
 			}
 			return;
 		}
@@ -1553,7 +1525,7 @@ namespace cg
 			return;
 		}
 		//drawType = DrawType::Repeat - if width > image.width() or height > image.height(), the image will be tiled
-		//drawType = DrawType::Resized - if width > image.width() or height > image.height(), the image will be resized using nearest neighbor interpolation
+		//drawType = DrawType::Resized - if width > image.width() or height > image.height(), the image will be resampled using nearest neighbor interpolation
 		//A more advanced version of the draw function
 		void drawEX(Image& image, uint32 srcX, uint32 srcY, uint32 dstX, uint32 dstY, uint32 width, uint32 height, DrawType drawType = DrawType::Repeat, void(*funcPtr)(std::pair<uint32, uint8>*, void*) = nullptr, void* funcData = nullptr)
 		{
