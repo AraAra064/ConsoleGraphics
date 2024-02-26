@@ -1,4 +1,4 @@
-//ConsoleGraphics Version 1.0
+//ConsoleGraphics V1.1
 //ISO C++ 11 or higher must be used to compile ConsoleGraphics.
 
 #include <vector>
@@ -72,7 +72,7 @@ namespace cg
 		return cg::BGR((uint8)r, (uint8)g, (uint8)b);
 	}
 
-	enum class InterpolationMethod {None, NearestNeighbor, Bilinear, AreaAveraging};
+	enum class InterpolationMethod {None, NearestNeighbor, Bilinear, Bicubic, Bisinusoidal, AreaAveraging};
 	enum class ExtrapolationMethod {None, Repeat, Extend};
 
 	enum class FilterType {Grayscale, WeightedGrayscale, Invert, Custom = 255};
@@ -114,6 +114,8 @@ namespace cg
 				break;
 				
 				case InterpolationMethod::Bilinear:
+				case InterpolationMethod::Bicubic:
+				case InterpolationMethod::Bisinusoidal:
 				{
 					float srcX, srcY;
 					for (uint32 y = 0; y < newHeight; ++y)
@@ -124,7 +126,7 @@ namespace cg
 							srcX /= width;
 							srcY = y * yScale;
 							srcY /= height;
-							data[(y * newWidth) + x] = getPixel(srcX, srcY, InterpolationMethod::Bilinear, ExtrapolationMethod::Extend);
+							data[(y * newWidth) + x] = samplePixel(srcX, srcY, m, ExtrapolationMethod::Extend);
 						}
 					}
 				}
@@ -281,7 +283,7 @@ namespace cg
 		bool loadImage(const std::string fileName)
 		{
 			std::string _fileName = fileName;
-			std::transform(_fileName.begin(), _fileName.end(), _fileName.begin(), [](char c)->char {return toupper(c); });
+			std::transform(_fileName.begin(), _fileName.end(), _fileName.begin(), [](char c)->char {return toupper(c);});
 
 			if (_fileName.find(".BMP") != std::string::npos)
 			{
@@ -326,7 +328,7 @@ namespace cg
 						std::cerr << "CGIMG ERROR {this->loadImage()}: Currently only supports 24 or 32 bit BMP files [" << fileName << "]" << std::endl;
 					#endif
 					return false;
-				}
+				}// else std::cout << "BytesPerPixel=" << bytesPerPixel << std::endl;
 
 				this->width = width;
 				this->height = abs(height);
@@ -334,6 +336,7 @@ namespace cg
 				pixels.resize(this->width * this->height);
 
 				const uint32 rowSize = width * bytesPerPixel, paddingSize = (4 - (width % 4)) % 4;
+				std::cout << (int)readfile.tellg() << std::endl;
 				std::vector<uint8> imgData(fileSize - imgDataOffset);
 				readfile.read(reinterpret_cast<char*>(&imgData[0]), imgData.size() * sizeof(uint8));
 
@@ -397,8 +400,74 @@ namespace cg
 			return;
 		}
 
-		//Will reimplement later
-		//void saveImage(const std::string fileName, uint32 ver)
+		//Saves image to disk (ver parameter currently unused)
+		void saveImage(const std::string fileName, uint32 ver = 0)
+		{
+			std::string _fileName = fileName;
+			std::transform(_fileName.begin(), _fileName.end(), _fileName.begin(), [](char c)->char {return toupper(c);});
+
+			if (_fileName.find(".BMP"))
+			{
+				std::vector<uint8> bmpHeader(14), dibHeader(40), pixData;
+				memcpy(&bmpHeader[0x00], "BM", 2 * sizeof(char));
+				uint32 val = bmpHeader.size() + dibHeader.size();
+				memcpy(&bmpHeader[0x0A], &val, sizeof(uint32));
+
+				val = 40;
+				int32 width = this->width;
+				int32 height = this->height;
+				height = -height;
+				memcpy(&dibHeader[0x00], &val, sizeof(uint32));
+				memcpy(&dibHeader[0x04], &width, sizeof(int32));
+				memcpy(&dibHeader[0x08], &height, sizeof(int32));
+				val = 1;
+				memcpy(&dibHeader[0x0C], &val, sizeof(uint16));
+				val = 32;
+				memcpy(&dibHeader[0x0E], &val, sizeof(uint16));
+
+				const uint16 bytesPerPixel = 4;
+				const uint32 rowSize = this->width * bytesPerPixel, paddingSize = (4 - (this->width % 4)) % 4;
+				const uint8 paddingVal = 0x00;
+				pixData.reserve(this->height * (rowSize + paddingSize));
+
+				for (uint32 y = 0; y < this->height; y++)
+				{
+					for (uint32 x = 0; x < this->width; x++)
+					{
+						//BBGGRRAA
+						auto p = accessPixel(x, y);
+						pixData.push_back(GetB(p->first));
+						pixData.push_back(GetG(p->first));
+						pixData.push_back(GetR(p->first));
+						pixData.push_back((p->second));
+					}
+
+					pixData.resize(pixData.size() + paddingSize, paddingVal);
+				}
+
+				//fileSize
+				val = bmpHeader.size() + dibHeader.size() + pixData.size();
+				memcpy(&bmpHeader[0x02], &val, sizeof(uint32));
+				val = pixData.size();
+				memcpy(&dibHeader[0x14], &val, sizeof(uint32));
+
+				std::ofstream writeFile(fileName.c_str(), std::ios::binary);
+				if (writeFile.is_open())
+				{
+					writeFile.write((char*)&bmpHeader[0], bmpHeader.size() * sizeof(char));
+					writeFile.write((char*)&dibHeader[0], dibHeader.size() * sizeof(char));
+					writeFile.write((char*)&pixData[0], pixData.size() * sizeof(char));
+					writeFile.close();
+				}
+			}
+			else {
+				#ifdef CG_DEBUG
+					std::cerr << "CGIMG ERROR {this->saveImage()}: Image type not supported. [" << fileName << "]" << std::endl;
+				#endif
+			}
+
+			return;
+		}
 
 		//FilterType::Invert = Invert all colours
 		//FilterType::Custom = Custom (pass in a function pointer, or lamda)
@@ -414,9 +483,9 @@ namespace cg
 					uint16 c;
 					for (uint32 i = 0; i < pixels.size(); ++i)
 					{
-						r = GetBValue(pixels[i].first);
-						g = GetGValue(pixels[i].first);
-						b = GetRValue(pixels[i].first);
+						r = cg::GetR(pixels[i].first);
+						g = cg::GetG(pixels[i].first);
+						b = cg::GetB(pixels[i].first);
 						c = (r + g + b) / 3;
 						pixels[i].first = cg::BGR(c, c, c);
 					}
@@ -428,9 +497,9 @@ namespace cg
 					uint8 r, g, b, c;
 					for (uint32 i = 0; i < pixels.size(); ++i)
 					{
-						r = GetBValue(pixels[i].first);
-						g = GetGValue(pixels[i].first);
-						b = GetRValue(pixels[i].first);
+						r = cg::GetR(pixels[i].first);
+						g = cg::GetG(pixels[i].first);
+						b = cg::GetB(pixels[i].first);
 						c = (r * 0.3f) + (g * 0.59f) + (b * 0.11f);
 						pixels[i].first = cg::BGR(c, c, c);
 					}
@@ -575,267 +644,201 @@ namespace cg
 		}
 
 		//Returns a copy of pixel at a point
-		std::pair<uint32, uint8> getPixel(float x, float y, InterpolationMethod im = InterpolationMethod::NearestNeighbor, ExtrapolationMethod em = ExtrapolationMethod::Repeat) const
+		std::pair<uint32, uint8> samplePixel(float x, float y, InterpolationMethod im = InterpolationMethod::NearestNeighbor, ExtrapolationMethod em = ExtrapolationMethod::Repeat) const
 		{
-			bool n = false, xNeg = (x < 0.f), yNeg = (y < 0.f);
-			uint32 ix = width - 1, iy = height - 1;
-			if (x > 1.f || xNeg)
-			{
-				switch (em)
-				{
-					default:
-					case ExtrapolationMethod::None:
-						n = true;
-						break;
-
-					case ExtrapolationMethod::Repeat:
-						x = fabs(x) - floor(fabs(x));
-						x = xNeg ? 1.f - x : x;
-						ix = floor(x * (width - 1));
-						break;
-
-					case ExtrapolationMethod::Extend:
-						x = std::max(std::min(1.f, x), 0.f);
-						ix = floor(x * (width - 1));
-						break;
-				}
-			} else ix = floor(x * (width - 1));
-			if (y > 1.f || yNeg)
-			{
-				switch (em)
-				{
-					default:
-					case ExtrapolationMethod::None:
-						n = true;
-						break;
-
-					case ExtrapolationMethod::Repeat:
-						y = fabs(y) - floor(fabs(y));
-						y = yNeg ? 1.f - y : y;
-						iy = floor(y * (height - 1));
-						break;
-
-					case ExtrapolationMethod::Extend:
-						y = std::max(std::min(1.f, y), 0.f);
-						iy = floor(y * (height - 1));
-						break;
-				}
-			} else iy = floor(y * (height - 1));
-
 			std::pair<uint32, uint8> pixel;
+			uint8 r[] = {0x00, 0x00, 0x00, 0x00};
+			uint8 g[] = {0x00, 0x00, 0x00, 0x00};
+			uint8 b[] = {0x00, 0x00, 0x00, 0x00};
+			uint8 a[] = {0xFF, 0xFF, 0xFF, 0xFF};
 
-			if (!n)
+			bool inBounds = (im != InterpolationMethod::AreaAveraging);
+			bool badX = (x < 0.f || x > 1.f);
+			bool badY = (y < 0.f || y > 1.f);
+
+			if (badX || badY)
 			{
-				float invX = 1.f - x;
-				float invY = 1.f - y;
+				switch (em)
+				{
+					case cg::ExtrapolationMethod::None:
+						inBounds = false;
+						pixel = std::make_pair(0x00000000, 0x00);
+						break;
+
+					case cg::ExtrapolationMethod::Repeat:
+						x = (x < 0.f ? x + 1.f : x - std::floor(x));
+						y = (y < 0.f ? y + 1.f : y - std::floor(y));
+						break;
+
+					case cg::ExtrapolationMethod::Extend:
+						x = std::min(std::max(0.f, x), 1.f);
+						y = std::min(std::max(0.f, y), 1.f);
+						break;
+				}
+			}
+
+			float posX = x * (width - 1), posY = y * (height - 1);
+			uint32 posXLower = posX, posXUpper = 0;
+			uint32 posYLower = posY, posYUpper = 0;
+			float valX = posX - std::floor(posX), valY = posY - std::floor(posY); //values used for interpolation
+
+			if (im == InterpolationMethod::NearestNeighbor || im == InterpolationMethod::None)
+			{
+				inBounds = false;
+				pixel = pixels[(std::round(posY) * width) + std::round(posX)];
+			}
+
+			if (inBounds)
+			{
+				switch (em)
+				{
+					case cg::ExtrapolationMethod::None:
+						break;
+
+					case cg::ExtrapolationMethod::Repeat:
+						posXUpper = (posXLower + 1) % width;
+						posYUpper = (posYLower + 1) % height;
+						break;
+
+					case cg::ExtrapolationMethod::Extend:
+						posXUpper = std::min<uint32>(std::max<uint32>(0, posXLower + 1), width - 1);
+						posYUpper = std::min<uint32>(std::max<uint32>(0, posYLower + 1), height - 1);
+						break;
+				}
+
+				uint32 index = (posYLower * width) + posXLower;
+				r[0] = cg::GetR(pixels[index].first);
+				g[0] = cg::GetG(pixels[index].first);
+				b[0] = cg::GetB(pixels[index].first);
+				a[0] = pixels[index].second;
+
+				index = (posYLower * width) + posXUpper;
+				r[1] = cg::GetR(pixels[index].first);
+				g[1] = cg::GetG(pixels[index].first);
+				b[1] = cg::GetB(pixels[index].first);
+				a[1] = pixels[index].second;
+
+				index = (posYUpper * width) + posXLower;
+				r[2] = cg::GetR(pixels[index].first);
+				g[2] = cg::GetG(pixels[index].first);
+				b[2] = cg::GetB(pixels[index].first);
+				a[2] = pixels[index].second;
+
+				index = (posYUpper * width) + posXUpper;
+				r[3] = cg::GetR(pixels[index].first);
+				g[3] = cg::GetG(pixels[index].first);
+				b[3] = cg::GetB(pixels[index].first);
+				a[3] = pixels[index].second;
+
+				int16 dR, dG, dB, dA;
+				float val, scale = -6.f; //for bicubic
 
 				switch (im)
 				{
-					default:
-					case InterpolationMethod::NearestNeighbor:
-					case InterpolationMethod::None:
-						pixel = pixels[(iy * width) + ix];
+					case cg::InterpolationMethod::Bilinear:
+						dR = r[1] - r[0];
+						dG = g[1] - g[0];
+						dB = b[1] - b[0];
+						dA = a[1] - a[0];
+						r[0] = r[0] + (valX * dR); //Combined rX1
+						g[0] = g[0] + (valX * dG); //Combined gX1
+						b[0] = b[0] + (valX * dB); //Combined bX1
+						a[0] = a[0] + (valX * dA); //Combined aX1
+
+						dR = r[3] - r[2];
+						dG = g[3] - g[2];
+						dB = b[3] - b[2];
+						dA = a[3] - a[2];
+						r[1] = r[2] + (valX * dR); //Combined rX2
+						g[1] = g[2] + (valX * dG); //Combined gX2
+						b[1] = b[2] + (valX * dB); //Combined bX2
+						a[1] = a[2] + (valX * dA); //Combined aX2
+
+						dR = r[1] - r[0];
+						dG = g[1] - g[0];
+						dB = b[1] - b[0];
+						dA = a[1] - a[0];
+						r[0] = r[0] + (valY * dR); //Combined rY
+						g[0] = g[0] + (valY * dG); //Combined gY
+						b[0] = b[0] + (valY * dB); //Combined bY
+						a[0] = a[0] + (valY * dA); //Combined aY
+
+						pixel = std::make_pair(cg::BGR(r[0], g[0], b[0]), a[0]);
 						break;
 
-					case InterpolationMethod::Bilinear:
-					{
-						//Convert to intergers and round down
-						
-						uint8 r[] = {0x00, 0x00, 0x00, 0x00};
-						uint8 g[] = {0x00, 0x00, 0x00, 0x00};
-						uint8 b[] = {0x00, 0x00, 0x00, 0x00};
-						uint8 a[] = {0xFF, 0xFF, 0xFF, 0xFF};
-						
-						r[0] = (cg::GetR(pixels[(iy * width) + ix].first) * invX);
-						g[0] = (cg::GetG(pixels[(iy * width) + ix].first) * invX);
-						b[0] = (cg::GetB(pixels[(iy * width) + ix].first) * invX);
-						a[0] = pixels[(iy * width) + ix].second * invX;
+					case cg::InterpolationMethod::Bicubic: //Doesn't work correctly. "Bisinusiodal" should provide similar results.
+						val = (0.333f * std::powf(valX, 3.f)) + (0.5f * std::powf(valX, 2.f));
+						val *= scale;
+						dR = r[1] - r[0];
+						dG = g[1] - g[0];
+						dB = b[1] - b[0];
+						dA = a[1] - a[0];
+						r[0] = (dR * val) + r[0]; //Combined rX1
+						g[0] = (dG * val) + g[0]; //Combined gX1
+						b[0] = (dB * val) + b[0]; //Combined bX1
+						a[0] = (dA * val) + a[0]; //Combined aX1
 
-						if (ix + 1 > width - 1)
-						{
-							switch (em)
-							{
-								default:
-								case ExtrapolationMethod::None:
-									r[1] = 0;
-									g[1] = 0;
-									b[1] = 0;
-									a[1] = 0;
-									break;
+						dR = r[3] - r[2];
+						dG = g[3] - g[2];
+						dB = b[3] - b[2];
+						dA = a[3] - a[2];
+						r[1] = (dR * val) + r[2]; //Combined rX2
+						g[1] = (dG * val) + g[2]; //Combined gX2
+						b[1] = (dB * val) + b[2]; //Combined bX2
+						a[1] = (dA * val) + a[2]; //Combined aX2
 
-								case ExtrapolationMethod::Repeat:
-									r[1] = cg::GetR(pixels[iy * width].first);
-									g[1] = cg::GetG(pixels[iy * width].first);
-									b[1] = cg::GetB(pixels[iy * width].first);
-									a[1] = pixels[iy * width].second;
-									break;
+						val = (0.333f * std::pow(valY, 3.f)) + (0.5f * std::pow(valY, 2.f));
+						val *= scale;
+						dR = r[1] - r[0];
+						dG = g[1] - g[0];
+						dB = b[1] - b[0];
+						dA = a[1] - a[0];
+						r[0] = (dR * val) + r[0]; //Combined rY
+						g[0] = (dG * val) + g[0]; //Combined gY
+						b[0] = (dB * val) + b[0]; //Combined bY
+						a[0] = (dA * val) + a[0]; //Combined aY
 
-								case ExtrapolationMethod::Extend:
-									r[1] = cg::GetR(pixels[(iy * width) + width - 1].first);
-									g[1] = cg::GetG(pixels[(iy * width) + width - 1].first);
-									b[1] = cg::GetB(pixels[(iy * width) + width - 1].first);
-									a[1] = pixels[(iy * width) + width - 1].second;
-									break;
-							}
-						} else {
-							r[1] = cg::GetR(pixels[(iy * width) + (ix + 1)].first);
-							g[1] = cg::GetG(pixels[(iy * width) + (ix + 1)].first);
-							b[1] = cg::GetB(pixels[(iy * width) + (ix + 1)].first);
-							a[1] = pixels[(iy * width) + (ix + 1)].second;
-						}
+						pixel = std::make_pair(cg::BGR(r[0], g[0], b[0]), a[0]);
+						break;
 
-						r[1] *= x;
-						g[1] *= x;
-						b[1] *= x;
-						a[1] *= x;
+					case cg::InterpolationMethod::Bisinusoidal:
+						val = (-0.5f * std::cosf(3.14159f * valX)) + 0.5f;
+						dR = r[1] - r[0];
+						dG = g[1] - g[0];
+						dB = b[1] - b[0];
+						dA = a[1] - a[0];
+						r[0] = (dR * val) + r[0]; //Combined rX1
+						g[0] = (dG * val) + g[0]; //Combined gX1
+						b[0] = (dB * val) + b[0]; //Combined bX1
+						a[0] = (dA * val) + a[0]; //Combined aX1
 
-						if (iy + 1 > height - 1)
-						{
-							switch (em)
-							{
-								default:
-								case ExtrapolationMethod::None:
-									r[2] = 0;
-									g[2] = 0;
-									b[2] = 0;
-									a[2] = 0;
-									break;
+						dR = r[3] - r[2];
+						dG = g[3] - g[2];
+						dB = b[3] - b[2];
+						dA = a[3] - a[2];
+						r[1] = (dR * val) + r[2]; //Combined rX2
+						g[1] = (dG * val) + g[2]; //Combined gX2
+						b[1] = (dB * val) + b[2]; //Combined bX2
+						a[1] = (dA * val) + a[2]; //Combined aX2
 
-								case ExtrapolationMethod::Repeat:
-									r[2] = cg::GetR(pixels[ix].first);
-									g[2] = cg::GetG(pixels[ix].first);
-									b[2] = cg::GetB(pixels[ix].first);
-									a[2] = pixels[ix].second;
-									break;
+						val = (-0.5f * std::cosf(3.14159f * valY)) + 0.5f;
+						dR = r[1] - r[0];
+						dG = g[1] - g[0];
+						dB = b[1] - b[0];
+						dA = a[1] - a[0];
+						r[0] = (dR * val) + r[0]; //Combined rY
+						g[0] = (dG * val) + g[0]; //Combined gY
+						b[0] = (dB * val) + b[0]; //Combined bY
+						a[0] = (dA * val) + a[0]; //Combined aY
 
-								case ExtrapolationMethod::Extend:
-									r[2] = cg::GetR(pixels[((height - 1) * width) + ix].first);
-									g[2] = cg::GetG(pixels[((height - 1) * width) + ix].first);
-									b[2] = cg::GetB(pixels[((height - 1) * width) + ix].first);
-									a[2] = pixels[((height - 1) * width) + ix].second;
-									break;
-							}
-						} else {
-							r[2] = cg::GetR(pixels[(iy * width) + (ix + 1)].first);
-							g[2] = cg::GetG(pixels[(iy * width) + (ix + 1)].first);
-							b[2] = cg::GetB(pixels[(iy * width) + (ix + 1)].first);
-							a[2] = pixels[(iy * width) + (ix + 1)].second;
-						}
+						pixel = std::make_pair(cg::BGR(r[0], g[0], b[0]), a[0]);
+						break;
 
-						r[2] *= invX;
-						g[2] *= invX;
-						b[2] *= invX;
-						a[2] *= invX;
-
-						uint8 k = (iy + 1 > height - 1 ? 0 : 1) + (ix + 1 > width - 1 ? 2 : 4);
-
-						switch (k)
-						{
-							case 5: //Both in bounds
-								r[3] = cg::GetR(pixels[((iy + 1) * width) + (ix + 1)].first);
-								g[3] = cg::GetG(pixels[((iy + 1) * width) + (ix + 1)].first);
-								b[3] = cg::GetB(pixels[((iy + 1) * width) + (ix + 1)].first);
-								a[3] = pixels[((iy + 1) * width) + (ix + 1)].second;
-								break;
-
-							case 3: //x IN, y OUT
-								switch (em)
-								{
-									default:
-									case ExtrapolationMethod::None:
-										r[3] = 0;
-										g[3] = 0;
-										b[3] = 0;
-										a[3] = 0;
-										break;
-
-									case ExtrapolationMethod::Repeat:
-										r[3] = cg::GetR(pixels[ix].first);
-										g[3] = cg::GetG(pixels[ix].first);
-										b[3] = cg::GetB(pixels[ix].first);
-										a[3] = pixels[ix].second;
-										break;
-
-									case ExtrapolationMethod::Extend:
-										r[3] = cg::GetR(pixels[((height - 1) * width) + ix].first);
-										g[3] = cg::GetG(pixels[((height - 1) * width) + ix].first);
-										b[3] = cg::GetB(pixels[((height - 1) * width) + ix].first);
-										a[3] = pixels[((height - 1) * width) + ix].second;
-										break;
-								}
-								break;
-
-								case 4: //x OUT, y IN
-								switch (em)
-								{
-									default:
-									case ExtrapolationMethod::None:
-										r[3] = 0;
-										g[3] = 0;
-										b[3] = 0;
-										a[3] = 0;
-										break;
-
-									case ExtrapolationMethod::Repeat:
-										r[3] = cg::GetR(pixels[iy * width].first);
-										g[3] = cg::GetG(pixels[iy * width].first);
-										b[3] = cg::GetB(pixels[iy * width].first);
-										a[3] = pixels[iy * width].second;
-										break;
-
-									case ExtrapolationMethod::Extend:
-										r[3] = cg::GetR(pixels[(iy * width) + width - 1].first);
-										g[3] = cg::GetG(pixels[(iy * width) + width - 1].first);
-										b[3] = cg::GetB(pixels[(iy * width) + width - 1].first);
-										a[3] = pixels[(iy * width) + width - 1].second;
-										break;
-								}
-								break;
-
-								case 2: //Both out of bounds
-								switch (em)
-								{
-									default:
-									case ExtrapolationMethod::None:
-										r[3] = 0;
-										g[3] = 0;
-										b[3] = 0;
-										a[3] = 0;
-										break;
-
-									case ExtrapolationMethod::Repeat:
-										r[3] = cg::GetR(pixels[0].first);
-										g[3] = cg::GetG(pixels[0].first);
-										b[3] = cg::GetB(pixels[0].first);
-										a[3] = pixels[0].second;
-										break;
-
-									case ExtrapolationMethod::Extend:
-										r[3] = cg::GetR(pixels[((height - 1) * width) + (width - 1)].first);
-										g[3] = cg::GetG(pixels[((height - 1) * width) + (width - 1)].first);
-										b[3] = cg::GetB(pixels[((height - 1) * width) + (width - 1)].first);
-										a[3] = pixels[((height - 1) * width) + (width - 1)].second;
-										break;
-								}
-								break;
-						}
-						
-						r[3] *= x;
-						g[3] *= x;
-						b[3] *= x;
-						a[3] *= x;
-							
-						uint8 finalR = ((r[0] + r[1]) * invY) + ((r[2] + r[3]) * y);
-						uint8 finalG = ((g[0] + g[1]) * invY) + ((g[2] + g[3]) * y);
-						uint8 finalB = ((b[0] + b[1]) * invY) + ((b[2] + b[3]) * y);
-						uint8 finalA = ((a[0] + a[1]) * invY) + ((a[2] + a[3]) * y);
-						
-						pixel = std::make_pair(cg::BGR(finalR, finalG, finalB), finalA);
-					}
-					break;
+					default:
+						break;
 				}
-			} else pixel = std::make_pair(0, 0);
-
+			}
+			
 			return pixel;
 		}
 
